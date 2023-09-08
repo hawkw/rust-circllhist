@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! assert_approx_eq {
     ($left:expr, $right:expr $(,)?) => {
         let left = $left as f64;

@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[derive(Debug)]
 pub struct Histogram {}
 
 #[derive(Debug, Eq, PartialEq)]

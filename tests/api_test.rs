@@ -1,4 +1,5 @@
-use circllhist::{DisplayBin, Histogram};
+use circllhist::Histogram;
+mod util;
 // package circonusllhist_test
 
 // import (
@@ -94,6 +95,9 @@ fn from_strs() {
 
     let double_hist = Histogram::from_strs(STRINGS.iter().chain(STRINGS.iter()))
         .expect("doubled histogram should parse");
+
+    assert_approx_eq!(single_hist.approx_sum() * 2.0, double_hist.approx_sum());
+    assert_ne!(single_hist, double_hist)
 }
 
 // func TestMean(t *testing.T) {
@@ -106,32 +110,78 @@ fn from_strs() {
 // 		t.Errorf("mean() -> %v != %v", mean, 0.24444)
 // 	}
 // }
+#[test]
+fn mean() {
+    let mut histogram = Histogram::default();
+    for sample in S1 {
+        histogram
+            .record_f64(*sample)
+            .expect("value should be recorded successfully");
+    }
 
-// func helpQTest(t *testing.T, vals, qin, qexpect []float64) {
-// 	h := hist.New()
-// 	for _, sample := range vals {
-// 		_ = h.RecordValue(sample)
-// 	}
-// 	qout, _ := h.ApproxQuantile(qin)
-// 	if len(qout) != len(qexpect) {
-// 		t.Errorf("wrong number of quantiles")
-// 	}
-// 	for i, q := range qout {
-// 		if !fuzzyEquals(qexpect[i], q) {
-// 			t.Errorf("q(%v) -> %v != %v", qin[i], q, qexpect[i])
-// 		}
-// 	}
-// }
+    assert_approx_eq!(0.2444444444, histogram.approx_mean());
+}
 
-// func TestQuantiles(t *testing.T) {
-// 	helpQTest(t, []float64{1}, []float64{0, 0.25, 0.5, 1}, []float64{1, 1.025, 1.05, 1.1})
-// 	helpQTest(t, s1, []float64{0, 0.95, 0.99, 1.0}, []float64{0, 0.4355, 0.4391, 0.44})
-// 	helpQTest(t, []float64{1.0, 2.0}, []float64{0.5}, []float64{1.1})
-// 	helpQTest(t, []float64{1.0, 1e200}, []float64{0, 1}, []float64{1.0, 1.1})
-// 	helpQTest(t, []float64{1e200, 1e200, 1e200, 0, 0, 1e-20, 1e-20, 1e-20, 1e-10}, []float64{0, 1},
-// 		[]float64{0, 1.1e-10})
-// 	helpQTest(t, []float64{0, 1}, []float64{0, 0.1}, []float64{0, 0})
-// }
+#[test]
+fn quantiles() {
+    // func helpQTest(t *testing.T, vals, qin, qexpect []float64) {
+    // 	h := hist.New()
+    // 	for _, sample := range vals {
+    // 		_ = h.RecordValue(sample)
+    // 	}
+    // 	qout, _ := h.ApproxQuantile(qin)
+    // 	if len(qout) != len(qexpect) {
+    // 		t.Errorf("wrong number of quantiles")
+    // 	}
+    // 	for i, q := range qout {
+    // 		if !fuzzyEquals(qexpect[i], q) {
+    // 			t.Errorf("q(%v) -> %v != %v", qin[i], q, qexpect[i])
+    // 		}
+    // 	}
+    // }
+    #[track_caller]
+    fn test<const QS: usize>(vals: &[f64], quantiles: [f64; QS], expected_quantiles: [f64; QS]) {
+        let mut histogram = Histogram::default();
+        for sample in dbg!(vals) {
+            histogram
+                .record_f64(*sample)
+                .expect("value should be recorded successfully");
+        }
+
+        let actual_quantiles = histogram
+            .approx_quantiles(dbg!(&quantiles))
+            .expect("quantiles should be calculated successfully");
+
+        for (&quantile, (&actual, &expected)) in quantiles
+            .iter()
+            .zip(actual_quantiles.iter().zip(expected_quantiles.iter()))
+        {
+            assert_approx_eq!(actual, expected, "q({quantile}) -> {expected} != {actual}");
+        }
+    }
+
+    // func TestQuantiles(t *testing.T) {
+    //  helpQTest(t, []float64{1}, []float64{0, 0.25, 0.5, 1}, []float64{1,
+    //  1.025, 1.05, 1.1})
+    test(&[1.0], [0.0, 0.25, 0.5, 1.0], [1.0, 1.025, 1.05, 1.1]);
+    // 	helpQTest(t, s1, []float64{0, 0.95, 0.99, 1.0}, []float64{0, 0.4355,
+    // 	0.4391, 0.44})
+    test(S1, [0.0, 0.95, 0.99, 1.0], [0.0, 0.4355, 0.4391, 0.44]);
+    // 	helpQTest(t, []float64{1.0, 2.0}, []float64{0.5}, []float64{1.1})
+    test(&[1.0, 2.0], [0.5], [1.1]);
+    // 	helpQTest(t, []float64{1.0, 1e200}, []float64{0, 1}, []float64{1.0, 1.1})
+    test(&[1.0, 1e200], [0.5], [1.1]);
+    // 	helpQTest(t, []float64{1e200, 1e200, 1e200, 0, 0, 1e-20, 1e-20, 1e-20, 1e-10}, []float64{0, 1},
+    // 		[]float64{0, 1.1e-10})
+    test(
+        &[1e200, 1e200, 1e200, 0.0, 0.0, 1e-20, 1e-20, 1e-20, 1e-10],
+        [0.0, 1.0],
+        [0.0, 1.1e-10],
+    );
+    // 	helpQTest(t, []float64{0, 1}, []float64{0, 0.1}, []float64{0, 0})
+    test(&[0.0, 0.1], [0.0, 0.1], [0.0, 0.0])
+    // }
+}
 
 // func BenchmarkHistogramRecordValue(b *testing.B) {
 // 	h := hist.New(hist.NoLocks())
