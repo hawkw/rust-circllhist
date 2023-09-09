@@ -183,46 +183,6 @@ fn quantiles() {
     // }
 }
 
-// func BenchmarkHistogramRecordValue(b *testing.B) {
-// 	h := hist.New(hist.NoLocks())
-// 	for i := 0; i < b.N; i++ {
-// 		_ = h.RecordValue(float64(i % 1000))
-// 	}
-// 	b.ReportAllocs()
-// }
-
-// func BenchmarkHistogramTypical(b *testing.B) {
-// 	h := hist.New(hist.NoLocks())
-// 	for i := 0; i < b.N; i++ {
-// 		_ = h.RecordValue(float64(i % 1000))
-// 	}
-// 	b.ReportAllocs()
-// }
-
-// func BenchmarkHistogramRecordIntScale(b *testing.B) {
-// 	h := hist.New(hist.NoLocks())
-// 	for i := 0; i < b.N; i++ {
-// 		_ = h.RecordIntScale(int64(i%90+10), (i/1000)%3)
-// 	}
-// 	b.ReportAllocs()
-// }
-
-// func BenchmarkHistogramTypicalIntScale(b *testing.B) {
-// 	h := hist.New(hist.NoLocks())
-// 	for i := 0; i < b.N; i++ {
-// 		_ = h.RecordIntScale(int64(i%90+10), (i/1000)%3)
-// 	}
-// 	b.ReportAllocs()
-// }
-
-// func BenchmarkNew(b *testing.B) {
-// 	b.ReportAllocs()
-
-// 	for i := 0; i < b.N; i++ {
-// 		hist.New()
-// 	}
-// }
-
 // func TestCompare(t *testing.T) {
 // 	// var h1, h2 *Bin
 // }

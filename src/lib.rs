@@ -1,7 +1,17 @@
-use std::fmt;
+#![cfg_attr(not(feature = "std"), no_std)]
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::fmt;
+
+mod bin;
+use bin::Bin;
+pub use bin::DisplayBin;
 
 #[derive(Debug)]
-pub struct Histogram {}
+pub struct Histogram {
+    bins: Vec<Bin>,
+}
 
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -16,18 +26,16 @@ pub enum QuantileError {
 
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum ParseError {}
+pub struct ParseError {
+    bin: bin::ParseBinError,
+    i: usize,
+}
 
 #[derive(Debug, Clone)]
 #[must_use = "a HistogramBuilder does nothing unless used to construct a histogram"]
 pub struct HistogramBuilder {
     lookup_tables: bool,
     bins: usize,
-}
-
-#[must_use = "a DisplayBin does nothing unless formatted"]
-pub struct DisplayBin<'hist> {
-    hist: &'hist Histogram,
 }
 
 impl Histogram {
@@ -53,7 +61,7 @@ impl Histogram {
     /// Returns the total number of recorded values.
     #[must_use]
     pub fn len(&self) -> usize {
-        todo!()
+        self.bins.len()
     }
 
     /// Returns the number of bins in the histogram.
@@ -67,22 +75,29 @@ impl Histogram {
     }
 
     /// Records an integer scalar value.
-    pub fn record_int_scale(&mut self, val: i64, scale: i32) -> Result<(), RecordError> {
+    pub fn record_int_scale(&mut self, val: i64, scale: i32) -> Result<&mut Self, RecordError> {
         self.record_int_scales(val, scale, 1)
     }
 
     /// Records `n` occurances of an integer scalar value.
-    pub fn record_int_scales(&mut self, val: i64, scale: i32, n: usize) -> Result<(), RecordError> {
-        todo!()
+    pub fn record_int_scales(
+        &mut self,
+        val: i64,
+        scale: i32,
+        n: i64,
+    ) -> Result<&mut Self, RecordError> {
+        self.insert(Bin::from_int_scale(val, scale), n);
+        Ok(self)
     }
 
     /// Record a floating point value.
-    pub fn record_f64(&mut self, val: f64) -> Result<(), RecordError> {
+    pub fn record_f64(&mut self, val: f64) -> Result<&mut Self, RecordError> {
         self.record_f64s(val, 1)
     }
 
-    pub fn record_f64s(&mut self, val: f64, n: usize) -> Result<(), RecordError> {
-        todo!()
+    pub fn record_f64s(&mut self, val: f64, n: i64) -> Result<&mut Self, RecordError> {
+        self.insert(Bin::from_f64(val), n);
+        Ok(self)
     }
 
     pub fn approx_quantiles<const QUANTILES: usize>(
@@ -106,14 +121,32 @@ impl Histogram {
     }
 
     pub fn display_bins(&self) -> impl Iterator<Item = DisplayBin<'_>> + '_ {
-        todo!();
-        std::iter::empty()
+        self.bins.iter().map(DisplayBin)
     }
 
     pub fn from_strs<A: AsRef<str>>(
         strs: impl IntoIterator<Item = A>,
     ) -> Result<Histogram, ParseError> {
         HistogramBuilder::default().from_strs(strs)
+    }
+
+    fn insert(&mut self, mut bin: Bin, count: i64) {
+        match self.bins.binary_search(&bin) {
+            // if `binary_search` returns `Ok`, an existing bin matches, so
+            // insert there.
+            Ok(idx) => self.bins[idx].update(count),
+            // if `binary_search` returns `Err`, then we need to either insert
+            // before or after the existing bin.
+            Err(mut idx) => {
+                bin.update(count);
+                let partition = &self.bins[idx];
+                // if the new bin is greater than the bin at `index`, insert after.
+                if &bin > partition {
+                    idx += 1;
+                }
+                self.bins.insert(idx, bin);
+            }
+        }
     }
 }
 
@@ -165,7 +198,16 @@ impl HistogramBuilder {
         &self,
         strs: impl IntoIterator<Item = A>,
     ) -> Result<Histogram, ParseError> {
-        todo!()
+        let bins = strs
+            .into_iter()
+            .enumerate()
+            .map(|(i, bin)| {
+                bin.as_ref()
+                    .parse::<Bin>()
+                    .map_err(|bin| ParseError { bin, i })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Histogram { bins })
     }
 }
 
@@ -175,13 +217,5 @@ impl Default for HistogramBuilder {
             lookup_tables: true,
             bins: Self::DEFAULT_SIZE,
         }
-    }
-}
-
-// === impl DisplayBin ===
-
-impl fmt::Display for DisplayBin<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
     }
 }
