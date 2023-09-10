@@ -305,46 +305,71 @@ fn min_max_mean() {
 // }
 
 // func TestMerge(t *testing.T) {
-// 	h1 := hist.New()
-// 	h2 := hist.New()
-// 	expect := hist.New()
+#[test]
+fn merge() {
+    // 	h1 := hist.New()
+    // 	h2 := hist.New()
+    // 	expect := hist.New()
+    let mut h1 = Histogram::default();
+    let mut h2 = Histogram::default();
+    let mut expect = Histogram::default();
 
-// 	// record 0-100 values in both h1 and h2.
-// 	for i := 0; i < 100; i++ {
-// 		if err := h1.RecordValues(float64(i), 1); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if err := h2.RecordValues(float64(i), 2); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if err := expect.RecordValues(float64(i), 3); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 	}
-// 	// record 100-200 values in h1.
-// 	for i := 100; i < 200; i++ {
-// 		if err := h1.RecordValues(float64(i), 1); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if err := expect.RecordValues(float64(i), 1); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 	}
-// 	// record 400-600 values in h2.
-// 	for i := 400; i < 600; i++ {
-// 		if err := h2.RecordValues(float64(i), 1); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if err := expect.RecordValues(float64(i), 1); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 	}
+    // 	// record 0-100 values in both h1 and h2.
+    // 	for i := 0; i < 100; i++ {
+    // 		if err := h1.RecordValues(float64(i), 1); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 		if err := h2.RecordValues(float64(i), 2); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 		if err := expect.RecordValues(float64(i), 3); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 	}
+    for i in 0..100 {
+        let i = i as f64;
+        h1.record_f64s(i, 1).unwrap();
+        h2.record_f64s(i, 2).unwrap();
+        expect.record_f64s(i, 3).unwrap();
+    }
 
-// 	h1.Merge(h2)
-// 	if !h1.Equals(expect) {
-// 		t.Error("Expected histograms to be equivalent")
-// 	}
-// }
+    // 	// record 100-200 values in h1.
+    // 	for i := 100; i < 200; i++ {
+    // 		if err := h1.RecordValues(float64(i), 1); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 		if err := expect.RecordValues(float64(i), 1); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 	}
+    for i in 100..200 {
+        let i = i as f64;
+        h1.record(i).unwrap();
+        expect.record(i).unwrap();
+    }
+    // 	// record 400-600 values in h2.
+    // 	for i := 400; i < 600; i++ {
+    // 		if err := h2.RecordValues(float64(i), 1); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 		if err := expect.RecordValues(float64(i), 1); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 	}
+    for i in 400..600 {
+        let i = i as f64;
+        h2.record(i).unwrap();
+        expect.record(i).unwrap();
+    }
+
+    h1.merge_from(&h2);
+    // 	h1.Merge(h2)
+    // 	if !h1.Equals(expect) {
+    // 		t.Error("Expected histograms to be equivalent")
+    // 	}
+    assert_eq!(h1, expect);
+    // }
+}
 
 // func BenchmarkHistogramMerge(b *testing.B) {
 // 	b.Run("random", func(b *testing.B) {

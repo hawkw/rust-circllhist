@@ -8,7 +8,7 @@ mod bin;
 use bin::Bin;
 pub use bin::DisplayBin;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Histogram {
     bins: Vec<Bin>,
 }
@@ -278,6 +278,10 @@ impl Histogram {
         // return sum
     }
 
+    pub fn merge_from(&mut self, other: &Self) {
+        todo!()
+    }
+
     pub fn display_bins(&self) -> impl Iterator<Item = DisplayBin<'_>> + '_ {
         self.bins.iter().map(DisplayBin)
     }
@@ -351,7 +355,7 @@ impl Default for Histogram {
 
 impl FromStr for Histogram {
     type Err = ParseError;
-    fn from_str(&self, s: &str) -> Result<Self, ParseError> {
+    fn from_str(s: &str) -> Result<Self, ParseError> {
         let strs = s.trim().split(|c| c == ',' || c == '\n');
         Self::from_strs(strs)
     }
