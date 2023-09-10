@@ -2,7 +2,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::{fmt, str::FromStr};
+use core::{cmp, convert::TryInto, fmt, mem, str::FromStr};
 
 mod bin;
 use bin::Bin;
@@ -279,7 +279,15 @@ impl Histogram {
     }
 
     pub fn merge_from(&mut self, other: &Self) {
-        todo!()
+        // the Go impl does a much more complicated thing, but this should also
+        // work...
+        for bin in &other.bins {
+            let mut bin = *bin;
+            let count = mem::replace(&mut bin.count, 0)
+                .try_into()
+                .unwrap_or(i64::MAX);
+            self.insert(bin, count);
+        }
     }
 
     pub fn display_bins(&self) -> impl Iterator<Item = DisplayBin<'_>> + '_ {
@@ -293,6 +301,7 @@ impl Histogram {
     }
 
     fn insert(&mut self, mut bin: Bin, count: i64) {
+        debug_assert_eq!(bin.count, 0);
         debug_assert!(is_sorted(&self.bins));
         match self.bins.binary_search(&bin) {
             // if `binary_search` returns `Ok`, an existing bin matches, so
@@ -408,7 +417,9 @@ impl HistogramBuilder {
                 .map_err(|bin| ParseError { bin, i })?;
             // insert expects an i64 count, so take it out of the parsed bin,
             // since we may be updating an existing bin.
-            let count = core::mem::replace(&mut bin.count, 0) as i64;
+            let count = mem::replace(&mut bin.count, 0)
+                .try_into()
+                .unwrap_or(i64::MAX);
             histogram.insert(bin, count);
         }
         Ok(histogram)
