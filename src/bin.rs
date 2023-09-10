@@ -46,8 +46,22 @@ const POWS_OF_TEN: [f64; 256] = [
 // === impl DisplayBin ===
 
 impl fmt::Display for DisplayBin<'_> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self.0, f)
+    }
+}
+
+impl fmt::LowerExp for DisplayBin<'_> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerExp::fmt(self.0, f)
+    }
+}
+
+impl fmt::UpperExp for DisplayBin<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperExp::fmt(self.0, f)
     }
 }
 
@@ -369,9 +383,23 @@ impl FromStr for Bin {
 }
 
 impl fmt::Display for Bin {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerExp::fmt(self, f)
+    }
+}
+
+impl fmt::LowerExp for Bin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // H[ <0.0 e+00> ]=1
-        write!(f, "H[ {:.1e} ]={}", self.value(), self.count)
+        write!(f, "H[{:3.1e}]={}", self.value(), self.count)
+    }
+}
+
+impl fmt::UpperExp for Bin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // H[ <0.0 e+00> ]=1
+        write!(f, "H[{:3.1E}]={}", self.value(), self.count)
     }
 }
 

@@ -30,6 +30,7 @@ const STRINGS: &[&str] = &[
     "H[4.1e-01]=2",
     "H[4.3e-01]=1",
 ];
+
 // func TestDecStrings(t *testing.T) {
 // 	h := hist.New()
 // 	for _, sample := range s1 {
@@ -47,6 +48,17 @@ const STRINGS: &[&str] = &[
 // }
 #[test]
 fn display_buckets() {
+    // `fmt::lowerExp` formats things *slightly* differently than Go's `%e` format,
+    // but it should still parse.
+    const RUST_STRINGS: &[&str] = &[
+        "H[0.0e0]=1",
+        "H[1.2e-1]=2",
+        "H[1.3e-1]=1",
+        "H[2.2e-1]=1",
+        "H[3.2e-1]=1",
+        "H[4.1e-1]=2",
+        "H[4.3e-1]=1",
+    ];
     let mut histogram = Histogram::default();
     for sample in S1 {
         histogram
@@ -55,7 +67,7 @@ fn display_buckets() {
     }
 
     let mut bins = histogram.display_bins();
-    for &expected in STRINGS {
+    for &expected in RUST_STRINGS {
         let formatted = bins.next().map(|bin| bin.to_string());
         assert_eq!(Some(dbg!(expected)), dbg!(formatted).as_deref());
     }

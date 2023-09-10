@@ -281,7 +281,17 @@ impl Eq for Histogram {}
 
 impl fmt::Display for Histogram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        let delim = if f.alternate() { "\n" } else { ", " };
+        let mut bins = self.bins.iter();
+        if let Some(bin) = bins.next() {
+            fmt::Display::fmt(bin, f)?;
+
+            for bin in bins {
+                write!(f, "{delim}{bin}")?;
+            }
+        }
+
+        Ok(())
     }
 }
 
