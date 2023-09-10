@@ -54,6 +54,13 @@ impl fmt::Display for DisplayBin<'_> {
 // === impl Bin ===
 
 impl Bin {
+    pub(crate) fn count(&self) -> Option<u64> {
+        if self.is_nan() {
+            return None;
+        }
+
+        Some(self.count)
+    }
     // func (hb *bin) setFromFloat64(d float64) *bin { //nolint:unparam
     fn set_f64(&mut self, mut f: f64) -> &mut Self {
         // hb.val = -1
@@ -213,7 +220,7 @@ impl Bin {
     }
 
     // func (hb *bin) isNaN() bool {
-    fn is_nan(&self) -> bool {
+    pub(crate) fn is_nan(&self) -> bool {
         // aval := hb.val
         // if aval < 0 {
         // 	aval = -aval
@@ -241,7 +248,7 @@ impl Bin {
     }
 
     // func (hb *bin) value() float64 {
-    fn value(&self) -> f64 {
+    pub(crate) fn value(&self) -> f64 {
         // if hb.isNaN() {
         //     return math.NaN()
         // }
@@ -258,8 +265,25 @@ impl Bin {
         (self.val as f64 / 10.0) * self.pow_10()
     }
 
+    // func (hb *bin) left() float64 {
+    pub(crate) fn left(&self) -> f64 {
+        // if hb.isNaN() {
+        //     return math.NaN()
+        // }
+        // out := hb.value()
+        // if out >= 0 {
+        //     return out
+        // }
+        // return out - hb.binWidth()
+        match self.value() {
+            v if v.is_nan() => f64::NAN,
+            v if v >= 0.0 => v,
+            v => v - self.bin_width(),
+        }
+    }
+
     // func (hb *bin) binWidth() float64 {
-    fn bin_width(&self) -> f64 {
+    pub(crate) fn bin_width(&self) -> f64 {
         // if hb.isNaN() {
         //     return math.NaN()
         // }

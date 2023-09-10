@@ -50,7 +50,7 @@ fn display_buckets() {
     let mut histogram = Histogram::default();
     for sample in S1 {
         histogram
-            .record_f64(*sample)
+            .record(*sample)
             .expect("value should be recorded successfully");
     }
 
@@ -115,72 +115,53 @@ fn mean() {
     let mut histogram = Histogram::default();
     for sample in S1 {
         histogram
-            .record_f64(*sample)
+            .record(*sample)
             .expect("value should be recorded successfully");
     }
 
     assert_approx_eq!(0.2444444444, histogram.approx_mean());
 }
 
+// func TestQuantiles(t *testing.T) {
+//  helpQTest(t, []float64{1}, []float64{0, 0.25, 0.5, 1}, []float64{1, 1.025, 1.05, 1.1})
 #[test]
-fn quantiles() {
-    // func helpQTest(t *testing.T, vals, qin, qexpect []float64) {
-    // 	h := hist.New()
-    // 	for _, sample := range vals {
-    // 		_ = h.RecordValue(sample)
-    // 	}
-    // 	qout, _ := h.ApproxQuantile(qin)
-    // 	if len(qout) != len(qexpect) {
-    // 		t.Errorf("wrong number of quantiles")
-    // 	}
-    // 	for i, q := range qout {
-    // 		if !fuzzyEquals(qexpect[i], q) {
-    // 			t.Errorf("q(%v) -> %v != %v", qin[i], q, qexpect[i])
-    // 		}
-    // 	}
-    // }
-    #[track_caller]
-    fn test<const QS: usize>(vals: &[f64], quantiles: [f64; QS], expected_quantiles: [f64; QS]) {
-        let mut histogram = Histogram::default();
-        for sample in dbg!(vals) {
-            histogram
-                .record_f64(*sample)
-                .expect("value should be recorded successfully");
-        }
+fn quantiles1() {
+    util::test_quantiles(&[1.0], [0.0, 0.25, 0.5, 1.0], [1.0, 1.025, 1.05, 1.1]);
+}
 
-        let actual_quantiles = histogram
-            .approx_quantiles(dbg!(&quantiles))
-            .expect("quantiles should be calculated successfully");
+// 	helpQTest(t, s1, []float64{0, 0.95, 0.99, 1.0}, []float64{0, 0.4355, 0.4391, 0.44})
+#[test]
+fn quantiles2() {
+    util::test_quantiles(S1, [0.0, 0.95, 0.99, 1.0], [0.0, 0.4355, 0.4391, 0.44]);
+}
 
-        for (&quantile, (&actual, &expected)) in quantiles
-            .iter()
-            .zip(actual_quantiles.iter().zip(expected_quantiles.iter()))
-        {
-            assert_approx_eq!(actual, expected, "q({quantile}) -> {expected} != {actual}");
-        }
-    }
-
-    // func TestQuantiles(t *testing.T) {
-    //  helpQTest(t, []float64{1}, []float64{0, 0.25, 0.5, 1}, []float64{1,
-    //  1.025, 1.05, 1.1})
-    test(&[1.0], [0.0, 0.25, 0.5, 1.0], [1.0, 1.025, 1.05, 1.1]);
-    // 	helpQTest(t, s1, []float64{0, 0.95, 0.99, 1.0}, []float64{0, 0.4355,
-    // 	0.4391, 0.44})
-    test(S1, [0.0, 0.95, 0.99, 1.0], [0.0, 0.4355, 0.4391, 0.44]);
+#[test]
+fn quantiles3() {
     // 	helpQTest(t, []float64{1.0, 2.0}, []float64{0.5}, []float64{1.1})
-    test(&[1.0, 2.0], [0.5], [1.1]);
+    util::test_quantiles(&[1.0, 2.0], [0.5], [1.1]);
+}
+
+#[test]
+fn quantiles4() {
     // 	helpQTest(t, []float64{1.0, 1e200}, []float64{0, 1}, []float64{1.0, 1.1})
-    test(&[1.0, 1e200], [0.5], [1.1]);
+    util::test_quantiles(&[1.0, 1e200], [0.0, 1.0], [1.0, 1.1]);
+}
+
+#[test]
+fn quantiles5() {
     // 	helpQTest(t, []float64{1e200, 1e200, 1e200, 0, 0, 1e-20, 1e-20, 1e-20, 1e-10}, []float64{0, 1},
     // 		[]float64{0, 1.1e-10})
-    test(
+    util::test_quantiles(
         &[1e200, 1e200, 1e200, 0.0, 0.0, 1e-20, 1e-20, 1e-20, 1e-10],
         [0.0, 1.0],
         [0.0, 1.1e-10],
     );
+}
+
+#[test]
+fn quantiles6() {
     // 	helpQTest(t, []float64{0, 1}, []float64{0, 0.1}, []float64{0, 0})
-    test(&[0.0, 0.1], [0.0, 0.1], [0.0, 0.0])
-    // }
+    util::test_quantiles(&[0.0, 0.1], [0.0, 0.1], [0.0, 0.0])
 }
 
 // func TestCompare(t *testing.T) {
@@ -243,7 +224,19 @@ fn quantiles() {
 // 		minVal = 0
 // 		maxVal = 1000000
 // 	)
+#[test]
+fn min_max_mean() {
+    const MIN: usize = 0;
+    const MAX: usize = 1000000;
+    let mut h = Histogram::default();
+    for i in MIN..MAX {
+        h.record(i as f64)
+            .expect("value should be recorded successfully");
+    }
 
+    assert_eq!(h.min(), MIN as f64, "incorrect `min` value");
+    assert_eq!(h.max(), MAX as f64, "incorrect `max` value");
+}
 // 	h := hist.New()
 // 	for i := minVal; i < maxVal; i++ {
 // 		if err := h.RecordValue(float64(i)); err != nil {
