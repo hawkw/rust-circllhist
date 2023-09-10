@@ -2,15 +2,15 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::{cmp, convert::TryInto, fmt, mem, str::FromStr};
+use core::{convert::TryInto, fmt, mem, str::FromStr};
 
 mod bin;
 use bin::Bin;
 pub use bin::DisplayBin;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Histogram {
-    bins: Vec<Bin>,
+    bins: alloc::vec::Vec<Bin>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -38,16 +38,17 @@ pub struct ParseError {
     i: usize,
 }
 
-#[derive(Debug, Clone)]
-#[must_use = "a HistogramBuilder does nothing unless used to construct a histogram"]
-pub struct HistogramBuilder {
-    lookup_tables: bool,
-    bins: usize,
-}
-
 impl Histogram {
-    pub fn build() -> HistogramBuilder {
-        HistogramBuilder::default()
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn with_capacity(bins: usize) -> Self {
+        Self {
+            bins: Vec::with_capacity(bins),
+        }
     }
 
     #[must_use]
@@ -297,7 +298,30 @@ impl Histogram {
     pub fn from_strs<A: AsRef<str>>(
         strs: impl IntoIterator<Item = A>,
     ) -> Result<Histogram, ParseError> {
-        HistogramBuilder::default().from_strs(strs)
+        let strs = strs.into_iter();
+        let sz = match strs.size_hint() {
+            (_, Some(sz)) => sz,
+            (sz, None) => sz,
+        };
+        // the input may include multiple bins of the same value, with
+        // potentially differing counts. so, rather than parsing bins and
+        // `collect`ing into a `Vec<Bin>`, we create a new `Histogram` and
+        // `insert` into it. this way, multiple bins of the same value are
+        // coalesced.
+        let mut histogram = Self::with_capacity(sz);
+        for (i, bin) in strs.enumerate() {
+            let mut bin = bin
+                .as_ref()
+                .parse::<Bin>()
+                .map_err(|bin| ParseError { bin, i })?;
+            // insert expects an i64 count, so take it out of the parsed bin,
+            // since we may be updating an existing bin.
+            let count = mem::replace(&mut bin.count, 0)
+                .try_into()
+                .unwrap_or(i64::MAX);
+            histogram.insert(bin, count);
+        }
+        Ok(histogram)
     }
 
     fn insert(&mut self, mut bin: Bin, count: i64) {
@@ -356,82 +380,11 @@ impl fmt::Display for Histogram {
     }
 }
 
-impl Default for Histogram {
-    fn default() -> Self {
-        HistogramBuilder::default().build()
-    }
-}
-
 impl FromStr for Histogram {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, ParseError> {
         let strs = s.trim().split(|c| c == ',' || c == '\n');
         Self::from_strs(strs)
-    }
-}
-
-// === impl HistogramBuilder ===
-
-impl HistogramBuilder {
-    pub const DEFAULT_SIZE: usize = 100;
-
-    /// Sets whether or not lookup tables are used by the [`Histogram`] being
-    /// constructed.
-    pub const fn with_lookup_tables(self, lookup_tables: bool) -> Self {
-        Self {
-            lookup_tables,
-            ..self
-        }
-    }
-
-    /// Sets the number of bins used by the [`Histogram`] being constructed.
-    pub const fn bins(self, bins: usize) -> Self {
-        Self { bins, ..self }
-    }
-
-    #[must_use]
-    pub fn build(&self) -> Histogram {
-        if self.lookup_tables {
-            // TODO(eliza): implement LUTs
-        }
-
-        Histogram {
-            bins: Vec::with_capacity(self.bins),
-        }
-    }
-
-    pub fn from_strs<A: AsRef<str>>(
-        &self,
-        strs: impl IntoIterator<Item = A>,
-    ) -> Result<Histogram, ParseError> {
-        // the input may include multiple bins of the same value, with
-        // potentially differing counts. so, rather than parsing bins and
-        // `collect`ing into a `Vec<Bin>`, we create a new `Histogram` and
-        // `insert` into it. this way, multiple bins of the same value are
-        // coalesced.
-        let mut histogram = self.build();
-        for (i, bin) in strs.into_iter().enumerate() {
-            let mut bin = bin
-                .as_ref()
-                .parse::<Bin>()
-                .map_err(|bin| ParseError { bin, i })?;
-            // insert expects an i64 count, so take it out of the parsed bin,
-            // since we may be updating an existing bin.
-            let count = mem::replace(&mut bin.count, 0)
-                .try_into()
-                .unwrap_or(i64::MAX);
-            histogram.insert(bin, count);
-        }
-        Ok(histogram)
-    }
-}
-
-impl Default for HistogramBuilder {
-    fn default() -> Self {
-        Self {
-            lookup_tables: true,
-            bins: Self::DEFAULT_SIZE,
-        }
     }
 }
 
