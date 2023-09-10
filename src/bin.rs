@@ -1,13 +1,18 @@
-use core::{cmp, fmt, num, str::FromStr};
+use core::{cmp, fmt, num};
 
 #[must_use = "a DisplayBin does nothing unless formatted"]
-pub struct DisplayBin<'hist>(pub(crate) &'hist Bin);
+pub struct DisplayBin<'hist>(pub(crate) &'hist Bucket);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) struct Bin {
-    pub(crate) count: u64,
     val: i8,
     exp: i8,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(crate) struct Bucket {
+    pub(crate) bin: Bin,
+    pub(crate) count: u64,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -17,6 +22,7 @@ pub(crate) enum ParseBinError {
     NoBin,
     NoCount,
     Expected(&'static str),
+    NegCount,
 }
 
 /// Lookup table for f64 powers of 10.
@@ -68,307 +74,7 @@ impl fmt::UpperExp for DisplayBin<'_> {
 // === impl Bin ===
 
 impl Bin {
-    pub(crate) fn count(&self) -> Option<u64> {
-        if self.is_nan() {
-            return None;
-        }
-
-        Some(self.count)
-    }
-    // func (hb *bin) setFromFloat64(d float64) *bin { //nolint:unparam
-    fn set_f64(&mut self, mut f: f64) -> &mut Self {
-        // hb.val = -1
-        self.val = -1;
-        // if math.IsInf(d, 0) || math.IsNaN(d) {
-        //     return hb
-        // }
-        if f.is_infinite() || f.is_nan() {
-            return self;
-        }
-        // if d == 0.0 {
-        //     hb.val = 0
-        //     return hb
-        // }
-        if f == 0.0 {
-            self.val = 0;
-            return self;
-        }
-        // sign := 1
-        // if math.Signbit(d) {
-        //     sign = -1
-        // }
-        let sign = if f.is_sign_negative() { -1 } else { 1 };
-        // d = math.Abs(d)
-        f = f.abs();
-        // bigExp := int(math.Floor(math.Log10(d)))
-        let big_exp = f.log10().floor() as i64;
-        // hb.exp = int8(bigExp)
-        let exp = big_exp as i8;
-        // if int(hb.exp) != bigExp { // rolled
-        //     hb.exp = 0
-        //     if bigExp < 0 {
-        //         hb.val = 0
-        //     }
-        //     return hb
-        // }
-        if exp as i64 != big_exp {
-            self.exp = 0;
-            if big_exp < 0 {
-                self.val = 0;
-            }
-            return self;
-        } else {
-            self.exp = exp;
-        }
-        // d /= hb.powerOfTen()
-        f /= self.pow_10();
-        // d *= 10
-        f *= 10.0;
-        // hb.val = int8(sign * int(math.Floor(d+1e-13)))
-        self.val = (sign * ((f + 1e-13).floor() as i64)) as i8;
-        // if hb.val == 100 || hb.val == -100 {
-        //     if hb.exp < 127 {
-        //         hb.val /= 10
-        //         hb.exp++
-        //     } else {
-        //         hb.val = 0
-        //         hb.exp = 0
-        //     }
-        // }
-        if self.val.abs() == 100 {
-            if self.exp < 127 {
-                self.val /= 10;
-                self.exp += 1;
-            } else {
-                self.val = 0;
-                self.exp = 0
-            }
-        }
-        // if hb.val == 0 {
-        //     hb.exp = 0
-        //     return hb
-        // }
-        if self.val == 0 {
-            self.exp = 0;
-            return self;
-        }
-        // if !((hb.val >= 10 && hb.val < 100) ||
-        //     (hb.val <= -10 && hb.val > -100)) {
-        //     hb.val = -1
-        //     hb.exp = 0
-        // }
-        if !(self.val >= 10 && self.val < 100) || (self.val <= -10 && self.val > -100) {
-            self.val = -1;
-            self.exp = 0
-        }
-        self
-    }
-
-    // func (h *Histogram) updateOldBinAt(idx uint16, count int64) uint64 {
-    pub(crate) fn update(&mut self, count: i64) {
-        // var newval uint64
-        // if count >= 0 {
-        //     newval = h.bvs[idx].count + uint64(count)
-        // } else {
-        //     newval = h.bvs[idx].count - uint64(-count)
-        // }
-        // if newval < h.bvs[idx].count { // rolled
-        //     newval = ^uint64(0)
-        // }
-        // h.bvs[idx].count = newval
-        // return newval - h.bvs[idx].count
-        self.count = self.count.saturating_add_signed(count)
-    }
-
-    pub(crate) fn from_f64(f: f64) -> Self {
-        let mut this = Self {
-            count: 0,
-            val: 0,
-            exp: 0,
-        };
-        this.set_f64(f);
-        this
-    }
-
-    pub(crate) fn from_int_scale(mut val: i64, mut scale: i32) -> Self {
-        if val == 0 {
-            return Bin {
-                count: 0,
-                val: 0,
-                exp: 0,
-            };
-        }
-        let sign = val.signum();
-        val = val.abs();
-        if val < 10 {
-            val *= 10;
-        } else {
-            scale += 1;
-        }
-
-        if val >= 100 {
-            let log10 = val.checked_ilog10().unwrap_or(0);
-            val = val.checked_rem(10 * log10 as i64).unwrap_or(val);
-            scale += log10 as i32;
-        }
-
-        if scale > 127 {
-            val = 0xff;
-            scale = 0;
-        } else if scale < -128 {
-            val = 0;
-            scale = 0;
-        }
-
-        val *= sign;
-
-        Bin {
-            count: 0,
-            val: val as i8,
-            exp: scale as i8,
-        }
-    }
-
-    pub(crate) fn midpoint(&self) -> f64 {
-        // if hb.isNaN() {
-        //     return math.NaN()
-        // }
-        // out := hb.value()
-        // if out == 0 {
-        //     return 0
-        // }
-        let val = self.value();
-        if val.is_nan() || val == 0.0 {
-            return val;
-        }
-
-        // interval := hb.binWidth()
-        // if out < 0 {
-        //     interval *= -1
-        // }
-        let interval = self.bin_width() * val.signum();
-
-        // return out + interval/2.0
-        val + interval / 2.0
-    }
-
-    fn pow_10(&self) -> f64 {
-        POWS_OF_TEN[self.exp as u8 as usize]
-    }
-
-    // func (hb *bin) isNaN() bool {
-    pub(crate) fn is_nan(&self) -> bool {
-        // aval := hb.val
-        // if aval < 0 {
-        // 	aval = -aval
-        // }
-        match self.val.abs() {
-            // if 99 < aval { // in [100... ]: nan
-            // 	return true
-            // }
-            val if 99 < val => true,
-            // if 9 < aval { // in [10 - 99]: valid range
-            // 	return false
-            // }
-            val if 9 < val => false,
-            // if 0 < aval { // in [1  - 9 ]: nan
-            // 	return true
-            // }
-            val if 0 < val => true,
-            // if 0 == aval { // in [0]      : zero bucket
-            // 	return false
-            // }
-            0 => false,
-            _ => false,
-            // return false
-        }
-    }
-
-    // func (hb *bin) value() float64 {
-    pub(crate) fn value(&self) -> f64 {
-        // if hb.isNaN() {
-        //     return math.NaN()
-        // }
-        if self.is_nan() {
-            return f64::NAN;
-        }
-        // if hb.val < 10 && hb.val > -10 {
-        //     return 0.0
-        // }
-        if self.val < 10 && self.val > -10 {
-            return 0.0;
-        }
-        // return (float64(hb.val) / 10.0) * hb.powerOfTen()
-        (self.val as f64 / 10.0) * self.pow_10()
-    }
-
-    // func (hb *bin) left() float64 {
-    pub(crate) fn left(&self) -> f64 {
-        // if hb.isNaN() {
-        //     return math.NaN()
-        // }
-        // out := hb.value()
-        // if out >= 0 {
-        //     return out
-        // }
-        // return out - hb.binWidth()
-        match self.value() {
-            v if v.is_nan() => f64::NAN,
-            v if v >= 0.0 => v,
-            v => v - self.bin_width(),
-        }
-    }
-
-    // func (hb *bin) binWidth() float64 {
-    pub(crate) fn bin_width(&self) -> f64 {
-        // if hb.isNaN() {
-        //     return math.NaN()
-        // }
-        if self.is_nan() {
-            return f64::NAN;
-        }
-        // if hb.val < 10 && hb.val > -10 {
-        //     return 0.0
-        // }
-        if self.val < 10 && self.val > -10 {
-            return 0.0;
-        }
-        // return hb.powerOfTen() / 10.0
-        self.pow_10() / 10.0
-    }
-
-    // // func (hb *bin) compare(h2 *bin) int {
-    // pub(crate) fn difference(&self, other: &Self) -> isize {
-    // //     var v1, v2 int
-
-    // //     // 1) slide exp positive
-    // //     // 2) shift by size of val multiple by (val != 0)
-    // //     // 3) then add or subtract val accordingly
-
-    // //     if hb.val >= 0 {
-    // //         v1 = ((int(hb.exp)+256)<<8)*(((int(hb.val)|(^int(hb.val)+1))>>8)&1) + int(hb.val)
-    // //     } else {
-    // //         v1 = ((int(hb.exp)+256)<<8)*(((int(hb.val)|(^int(hb.val)+1))>>8)&1) - int(hb.val)
-    // //     }
-    //     let v1 = if self.val >= 0 {
-    //             let v = self.val as isize;
-    //             (self.exp as isize + 256) << 8 * ((v | (!v + 1)) >> 8) & 1) + int
-    //     }
-    // //     if h2.val >= 0 {
-    // //         v2 = ((int(h2.exp)+256)<<8)*(((int(h2.val)|(^int(h2.val)+1))>>8)&1) + int(h2.val)
-    // //     } else {
-    // //         v2 = ((int(h2.exp)+256)<<8)*(((int(h2.val)|(^int(h2.val)+1))>>8)&1) - int(h2.val)
-    // //     }
-
-    // //     // return the difference
-    // //     return v2 - v1
-    // }
-}
-
-impl FromStr for Bin {
-    type Err = ParseBinError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    pub(super) fn from_str(s: &str) -> Result<(Self, i64), ParseBinError> {
         // H[0.0e+00]=1
         let s = s.trim();
 
@@ -398,44 +104,252 @@ impl FromStr for Bin {
 
         let count = count_str
             .trim()
-            .parse::<u64>()
+            .parse::<i64>()
             .map_err(ParseBinError::ParseCount)?;
+        if count < 0 {
+            return Err(ParseBinError::NegCount);
+        }
 
-        Ok(Self {
-            count,
-            ..Self::from_f64(bin)
-        })
+        Ok((Self::from_f64(bin), count))
+    }
+
+    pub(crate) fn from_int_scale(mut val: i64, mut scale: i32) -> Self {
+        if val == 0 {
+            return Self { val: 0, exp: 0 };
+        }
+        let sign = val.signum();
+        val = val.abs();
+        if val < 10 {
+            val *= 10;
+        } else {
+            scale += 1;
+        }
+
+        if val >= 100 {
+            let log10 = val.checked_ilog10().unwrap_or(0);
+            val = val.checked_rem(10 * log10 as i64).unwrap_or(val);
+            scale += log10 as i32;
+        }
+
+        if scale > 127 {
+            val = 0xff;
+            scale = 0;
+        } else if scale < -128 {
+            val = 0;
+            scale = 0;
+        }
+
+        val *= sign;
+
+        Self {
+            val: val as i8,
+            exp: scale as i8,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn from_f64(mut f: f64) -> Self {
+        let mut this = Self { val: 0, exp: 0 };
+        // hb.val = -1
+        this.val = -1;
+        // if math.IsInf(d, 0) || math.IsNaN(d) {
+        //     return hb
+        // }
+        if f.is_infinite() || f.is_nan() {
+            return this;
+        }
+        // if d == 0.0 {
+        //     hb.val = 0
+        //     return hb
+        // }
+        if f == 0.0 {
+            this.val = 0;
+            return this;
+        }
+        // sign := 1
+        // if math.Signbit(d) {
+        //     sign = -1
+        // }
+        let sign = if f.is_sign_negative() { -1 } else { 1 };
+        // d = math.Abs(d)
+        f = f.abs();
+        // bigExp := int(math.Floor(math.Log10(d)))
+        let big_exp = f.log10().floor() as i64;
+        // hb.exp = int8(bigExp)
+        let exp = big_exp as i8;
+        // if int(hb.exp) != bigExp { // rolled
+        //     hb.exp = 0
+        //     if bigExp < 0 {
+        //         hb.val = 0
+        //     }
+        //     return hb
+        // }
+        if exp as i64 != big_exp {
+            this.exp = 0;
+            if big_exp < 0 {
+                this.val = 0;
+            }
+            return this;
+        } else {
+            this.exp = exp;
+        }
+        // d /= hb.powerOfTen()
+        f /= this.pow_10();
+        // d *= 10
+        f *= 10.0;
+        // hb.val = int8(sign * int(math.Floor(d+1e-13)))
+        this.val = (sign * ((f + 1e-13).floor() as i64)) as i8;
+        // if hb.val == 100 || hb.val == -100 {
+        //     if hb.exp < 127 {
+        //         hb.val /= 10
+        //         hb.exp++
+        //     } else {
+        //         hb.val = 0
+        //         hb.exp = 0
+        //     }
+        // }
+        if this.val.abs() == 100 {
+            if this.exp < 127 {
+                this.val /= 10;
+                this.exp += 1;
+            } else {
+                this.val = 0;
+                this.exp = 0
+            }
+        }
+        // if hb.val == 0 {
+        //     hb.exp = 0
+        //     return hb
+        // }
+        if this.val == 0 {
+            this.exp = 0;
+            return this;
+        }
+        // if !((hb.val >= 10 && hb.val < 100) ||
+        //     (hb.val <= -10 && hb.val > -100)) {
+        //     hb.val = -1
+        //     hb.exp = 0
+        // }
+        if !(this.val >= 10 && this.val < 100) || (this.val <= -10 && this.val > -100) {
+            this.val = -1;
+            this.exp = 0
+        }
+        this
+    }
+
+    #[must_use]
+    pub(crate) fn midpoint(&self) -> f64 {
+        // if hb.isNaN() {
+        //     return math.NaN()
+        // }
+        // out := hb.value()
+        // if out == 0 {
+        //     return 0
+        // }
+        let val = self.value();
+        if val.is_nan() || val == 0.0 {
+            return val;
+        }
+
+        // interval := hb.binWidth()
+        // if out < 0 {
+        //     interval *= -1
+        // }
+        let interval = self.bin_width() * val.signum();
+
+        // return out + interval/2.0
+        val + interval / 2.0
+    }
+
+    // func (hb *bin) isNaN() bool {
+    #[must_use]
+    pub(crate) fn is_nan(&self) -> bool {
+        // aval := hb.val
+        // if aval < 0 {
+        // 	aval = -aval
+        // }
+        match self.val.abs() {
+            // if 99 < aval { // in [100... ]: nan
+            // 	return true
+            // }
+            val if 99 < val => true,
+            // if 9 < aval { // in [10 - 99]: valid range
+            // 	return false
+            // }
+            val if 9 < val => false,
+            // if 0 < aval { // in [1  - 9 ]: nan
+            // 	return true
+            // }
+            val if 0 < val => true,
+            // if 0 == aval { // in [0]      : zero bucket
+            // 	return false
+            // }
+            0 => false,
+            _ => false,
+            // return false
+        }
+    }
+
+    // func (hb *bin) value() float64 {
+    #[must_use]
+    pub(crate) fn value(&self) -> f64 {
+        // if hb.isNaN() {
+        //     return math.NaN()
+        // }
+        if self.is_nan() {
+            return f64::NAN;
+        }
+        // if hb.val < 10 && hb.val > -10 {
+        //     return 0.0
+        // }
+        if self.val < 10 && self.val > -10 {
+            return 0.0;
+        }
+        // return (float64(hb.val) / 10.0) * hb.powerOfTen()
+        (self.val as f64 / 10.0) * self.pow_10()
+    }
+
+    // func (hb *bin) left() float64 {
+    #[must_use]
+    pub(crate) fn left(&self) -> f64 {
+        // if hb.isNaN() {
+        //     return math.NaN()
+        // }
+        // out := hb.value()
+        // if out >= 0 {
+        //     return out
+        // }
+        // return out - hb.binWidth()
+        match self.value() {
+            v if v.is_nan() => f64::NAN,
+            v if v >= 0.0 => v,
+            v => v - self.bin_width(),
+        }
+    }
+
+    // func (hb *bin) binWidth() float64 {
+    #[must_use]
+    pub(crate) fn bin_width(&self) -> f64 {
+        // if hb.isNaN() {
+        //     return math.NaN()
+        // }
+        if self.is_nan() {
+            return f64::NAN;
+        }
+        // if hb.val < 10 && hb.val > -10 {
+        //     return 0.0
+        // }
+        if self.val < 10 && self.val > -10 {
+            return 0.0;
+        }
+        // return hb.powerOfTen() / 10.0
+        self.pow_10() / 10.0
+    }
+
+    fn pow_10(&self) -> f64 {
+        POWS_OF_TEN[self.exp as u8 as usize]
     }
 }
-
-impl fmt::Display for Bin {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::LowerExp::fmt(self, f)
-    }
-}
-
-impl fmt::LowerExp for Bin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // H[ <0.0 e+00> ]=1
-        write!(f, "H[{:3.1e}]={}", self.value(), self.count)
-    }
-}
-
-impl fmt::UpperExp for Bin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // H[ <0.0 e+00> ]=1
-        write!(f, "H[{:3.1E}]={}", self.value(), self.count)
-    }
-}
-
-impl PartialEq for Bin {
-    fn eq(&self, other: &Self) -> bool {
-        self.count == other.count && self.cmp(other) == cmp::Ordering::Equal
-    }
-}
-
-impl Eq for Bin {}
 
 impl PartialOrd for Bin {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
@@ -466,6 +380,83 @@ impl Ord for Bin {
                 // and if they have the same exponent, finally compare the value
                 .then_with(|| self.val.cmp(&other.val))
         })
+    }
+}
+
+// === impl Bucket ===
+
+impl Bucket {
+    pub(crate) fn count(&self) -> Option<u64> {
+        if self.bin.is_nan() {
+            return None;
+        }
+
+        Some(self.count)
+    }
+    // func (hb *bin) setFromFloat64(d float64) *bin { //nolint:unparam
+
+    // func (h *Histogram) updateOldBinAt(idx uint16, count int64) uint64 {
+    pub(crate) fn update(&mut self, count: i64) {
+        // var newval uint64
+        // if count >= 0 {
+        //     newval = h.bvs[idx].count + uint64(count)
+        // } else {
+        //     newval = h.bvs[idx].count - uint64(-count)
+        // }
+        // if newval < h.bvs[idx].count { // rolled
+        //     newval = ^uint64(0)
+        // }
+        // h.bvs[idx].count = newval
+        // return newval - h.bvs[idx].count
+        self.count = self.count.saturating_add_signed(count)
+    }
+
+    // // func (hb *bin) compare(h2 *bin) int {
+    // pub(crate) fn difference(&self, other: &Self) -> isize {
+    // //     var v1, v2 int
+
+    // //     // 1) slide exp positive
+    // //     // 2) shift by size of val multiple by (val != 0)
+    // //     // 3) then add or subtract val accordingly
+
+    // //     if hb.val >= 0 {
+    // //         v1 = ((int(hb.exp)+256)<<8)*(((int(hb.val)|(^int(hb.val)+1))>>8)&1) + int(hb.val)
+    // //     } else {
+    // //         v1 = ((int(hb.exp)+256)<<8)*(((int(hb.val)|(^int(hb.val)+1))>>8)&1) - int(hb.val)
+    // //     }
+    //     let v1 = if self.val >= 0 {
+    //             let v = self.val as isize;
+    //             (self.exp as isize + 256) << 8 * ((v | (!v + 1)) >> 8) & 1) + int
+    //     }
+    // //     if h2.val >= 0 {
+    // //         v2 = ((int(h2.exp)+256)<<8)*(((int(h2.val)|(^int(h2.val)+1))>>8)&1) + int(h2.val)
+    // //     } else {
+    // //         v2 = ((int(h2.exp)+256)<<8)*(((int(h2.val)|(^int(h2.val)+1))>>8)&1) - int(h2.val)
+    // //     }
+
+    // //     // return the difference
+    // //     return v2 - v1
+    // }
+}
+
+impl fmt::Display for Bucket {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerExp::fmt(self, f)
+    }
+}
+
+impl fmt::LowerExp for Bucket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // H[ <0.0 e+00> ]=1
+        write!(f, "H[{:3.1e}]={}", self.bin.value(), self.count)
+    }
+}
+
+impl fmt::UpperExp for Bucket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // H[ <0.0 e+00> ]=1
+        write!(f, "H[{:3.1E}]={}", self.bin.value(), self.count)
     }
 }
 
@@ -537,7 +528,6 @@ mod tests {
         Bin {
             val: val as i8,
             exp: scale as i8,
-            count: 0,
         }
     }
 }

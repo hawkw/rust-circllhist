@@ -2,15 +2,15 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::{convert::TryInto, fmt, mem, str::FromStr};
+use core::{convert::TryInto, fmt, str::FromStr};
 
 mod bin;
-use bin::Bin;
 pub use bin::DisplayBin;
+use bin::{Bin, Bucket};
 
 #[derive(Debug, Clone, Default)]
 pub struct Histogram {
-    bins: alloc::vec::Vec<Bin>,
+    bins: alloc::vec::Vec<Bucket>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -128,7 +128,7 @@ impl Histogram {
         //         return nil, fmt.Errorf("out of order") //nolint:goerr113
         //     }
         // }
-        if !is_sorted(quantiles) {
+        if !is_sorted_by(quantiles, |q| *q) {
             return Err(QuantilesError::NotSorted);
         }
         // // Add up the bins
@@ -140,7 +140,7 @@ impl Histogram {
         // if totalCnt == 0.0 {
         //     return nil, fmt.Errorf("empty_histogram") //nolint:goerr113
         // }
-        let total_count: u64 = self.bins.iter().filter_map(Bin::count).sum();
+        let total_count: u64 = self.bins.iter().filter_map(Bucket::count).sum();
         if total_count == 0 {
             return Err(QuantilesError::Quantile(QuantileError::EmptyHistogram));
         }
@@ -169,12 +169,16 @@ impl Histogram {
         //     break
         // }
         let mut lower_cnt = 0.0;
-        let mut bins = self.bins.iter().skip_while(|bin| bin.is_nan());
+        let mut bins = self.bins.iter().skip_while(|bucket| bucket.bin.is_nan());
         let (mut bin_width, mut bin_left, mut upper_cnt) = {
-            let bin = bins
+            let bucket = bins
                 .next()
                 .ok_or(QuantilesError::Quantile(QuantileError::EmptyHistogram))?;
-            (bin.bin_width(), bin.left(), bin.count as f64)
+            (
+                bucket.bin.bin_width(),
+                bucket.bin.left(),
+                bucket.count as f64,
+            )
         };
         // for iq = 0; iq < len(qIn); iq++ {
         for out_q in out.iter_mut() {
@@ -186,11 +190,11 @@ impl Histogram {
             //     upperCnt = lowerCnt + float64(h.bvs[ib].count)
             // }
             while upper_cnt < *out_q {
-                let Some(bin) = bins.next() else { break };
-                bin_width = bin.bin_width();
-                bin_left = bin.left();
+                let Some(bucket) = bins.next() else { break };
+                bin_width = bucket.bin.bin_width();
+                bin_left = bucket.bin.left();
                 lower_cnt = upper_cnt;
-                upper_cnt = lower_cnt + bin.count as f64;
+                upper_cnt = lower_cnt + bucket.count as f64;
             }
             // switch {
             // case lowerCnt == qOut[iq]:
@@ -244,10 +248,10 @@ impl Histogram {
         let sum: f64 = self
             .bins
             .iter()
-            .map(|bin| {
-                let cardinality = bin.count as f64;
+            .map(|bucket| {
+                let cardinality = bucket.count as f64;
                 divisor += cardinality;
-                bin.midpoint() * cardinality
+                bucket.bin.midpoint() * cardinality
             })
             .sum();
         // if divisor == 0.0 {
@@ -274,7 +278,7 @@ impl Histogram {
         // }
         self.bins
             .iter()
-            .map(|bin| bin.midpoint() * bin.count as f64)
+            .map(|&Bucket { bin, count }| bin.midpoint() * count as f64)
             .sum()
         // return sum
     }
@@ -282,11 +286,8 @@ impl Histogram {
     pub fn merge_from(&mut self, other: &Self) {
         // the Go impl does a much more complicated thing, but this should also
         // work...
-        for bin in &other.bins {
-            let mut bin = *bin;
-            let count = mem::replace(&mut bin.count, 0)
-                .try_into()
-                .unwrap_or(i64::MAX);
+        for &Bucket { count, bin } in &other.bins {
+            let count = count.try_into().unwrap_or(i64::MAX);
             self.insert(bin, count);
         }
     }
@@ -310,44 +311,46 @@ impl Histogram {
         // coalesced.
         let mut histogram = Self::with_capacity(sz);
         for (i, bin) in strs.enumerate() {
-            let mut bin = bin
-                .as_ref()
-                .parse::<Bin>()
-                .map_err(|bin| ParseError { bin, i })?;
-            // insert expects an i64 count, so take it out of the parsed bin,
-            // since we may be updating an existing bin.
-            let count = mem::replace(&mut bin.count, 0)
-                .try_into()
-                .unwrap_or(i64::MAX);
+            let (bin, count) = Bin::from_str(bin.as_ref()).map_err(|bin| ParseError { bin, i })?;
             histogram.insert(bin, count);
         }
         Ok(histogram)
     }
 
-    fn insert(&mut self, mut bin: Bin, count: i64) {
-        debug_assert_eq!(bin.count, 0);
-        debug_assert!(is_sorted(&self.bins));
-        match self.bins.binary_search(&bin) {
+    fn insert(&mut self, bin: Bin, count: i64) {
+        debug_assert!(is_sorted_by(&self.bins, |bucket| bucket.bin));
+        match self.bins.binary_search_by_key(&bin, |bucket| bucket.bin) {
             // if `binary_search` returns `Ok`, an existing bin matches, so
             // insert there.
             Ok(idx) => self.bins[idx].update(count),
             // if `binary_search` returns `Err`, then we need to either insert
             // before or after the existing bin.
             Err(mut idx) => {
-                bin.update(count);
+                if count < 0 {
+                    return;
+                }
                 // index is past the last bin, push to the end without having to
                 // first check.
                 if idx >= self.bins.len() {
-                    self.bins.push(bin);
+                    self.bins.push(Bucket {
+                        bin,
+                        count: count as u64,
+                    });
                     return;
                 }
 
                 let partition = &self.bins[idx];
                 // if the new bin is greater than the bin at `index`, insert after.
-                if &bin > partition {
+                if bin > partition.bin {
                     idx += 1;
                 }
-                self.bins.insert(idx, bin);
+                self.bins.insert(
+                    idx,
+                    Bucket {
+                        bin,
+                        count: count as u64,
+                    },
+                );
             }
         }
     }
@@ -388,6 +391,6 @@ impl FromStr for Histogram {
     }
 }
 
-fn is_sorted<T: PartialOrd>(slice: impl AsRef<[T]>) -> bool {
-    slice.as_ref().windows(2).all(|w| w[0] <= w[1])
+fn is_sorted_by<T, U: PartialOrd>(slice: impl AsRef<[T]>, f: impl Fn(&T) -> U) -> bool {
+    slice.as_ref().windows(2).all(|w| f(&w[0]) <= f(&w[1]))
 }
