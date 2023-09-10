@@ -318,7 +318,10 @@ impl Histogram {
 
 impl PartialEq for Histogram {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        self.bins
+            .iter()
+            .zip(other.bins.iter())
+            .all(|(my_bin, their_bin)| my_bin == their_bin)
     }
 }
 

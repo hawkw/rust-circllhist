@@ -3,7 +3,7 @@ use core::{cmp, fmt, num, str::FromStr};
 #[must_use = "a DisplayBin does nothing unless formatted"]
 pub struct DisplayBin<'hist>(pub(crate) &'hist Bin);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) struct Bin {
     pub(crate) count: u64,
     val: i8,
@@ -425,6 +425,14 @@ impl fmt::UpperExp for Bin {
         write!(f, "H[{:3.1E}]={}", self.value(), self.count)
     }
 }
+
+impl PartialEq for Bin {
+    fn eq(&self, other: &Self) -> bool {
+        self.count == other.count && self.cmp(other) == cmp::Ordering::Equal
+    }
+}
+
+impl Eq for Bin {}
 
 impl PartialOrd for Bin {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
