@@ -60,10 +60,10 @@ impl Histogram {
         self.quantile(0.0).unwrap_or(f64::NAN)
     }
 
-    #[must_use]
-    pub fn mean(&self) -> f64 {
-        todo!()
-    }
+    // #[must_use]
+    // pub fn mean(&self) -> f64 {
+    //     todo!()
+    // }
 
     /// Returns the total number of recorded values.
     #[must_use]
@@ -388,7 +388,7 @@ impl HistogramBuilder {
             .enumerate()
             .map(|(i, bin)| {
                 bin.as_ref()
-                    .parse::<Bin>()
+                .parse::<Bin>()
                     .map_err(|bin| ParseError { bin, i })
             })
             .collect::<Result<Vec<_>, _>>()?;

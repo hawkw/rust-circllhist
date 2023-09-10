@@ -107,30 +107,29 @@ fn from_strs() {
 
     let double_hist = Histogram::from_strs(STRINGS.iter().chain(STRINGS.iter()))
         .expect("doubled histogram should parse");
+    eprintln!("single_hist:\n{single_hist:#}\ndouble_hist:\n{double_hist:#}");
 
     assert_approx_eq!(single_hist.approx_sum() * 2.0, double_hist.approx_sum());
     assert_ne!(single_hist, double_hist)
 }
 
 // func TestMean(t *testing.T) {
-// 	h := hist.New()
-// 	for _, sample := range s1 {
-// 		_ = h.RecordValue(sample)
-// 	}
-// 	mean := h.ApproxMean()
-// 	if !fuzzyEquals(0.2444444444, mean) {
-// 		t.Errorf("mean() -> %v != %v", mean, 0.24444)
-// 	}
-// }
 #[test]
 fn mean() {
+    // 	h := hist.New()
     let mut histogram = Histogram::default();
+    // 	for _, sample := range s1 {
+    // 		_ = h.RecordValue(sample)
+    // 	}
     for sample in S1 {
         histogram
             .record(*sample)
             .expect("value should be recorded successfully");
     }
-
+    // 	mean := h.ApproxMean()
+    // 	if !fuzzyEquals(0.2444444444, mean) {
+    // 		t.Errorf("mean() -> %v != %v", mean, 0.24444)
+    // 	}
     assert_approx_eq!(0.2444444444, histogram.approx_mean());
 }
 
@@ -232,49 +231,49 @@ fn quantiles6() {
 // }
 
 // func TestMinMaxMean(t *testing.T) {
-// 	const (
-// 		minVal = 0
-// 		maxVal = 1000000
-// 	)
 #[test]
 fn min_max_mean() {
+    // 	const (
+    // 		minVal = 0
+    // 		maxVal = 1000000
+    // 	)
     const MIN: usize = 0;
     const MAX: usize = 1000000;
+    // 	h := hist.New()
+    // 	for i := minVal; i < maxVal; i++ {
+    // 		if err := h.RecordValue(float64(i)); err != nil {
+    // 			t.Fatal(err)
+    // 		}
+    // 	}
     let mut h = Histogram::default();
     for i in MIN..MAX {
         h.record(i as f64)
             .expect("value should be recorded successfully");
     }
 
+    // 	if h.Min() > minVal {
+    // 		t.Error("incorrect min value")
+    // 	}
     assert_eq!(h.min(), MIN as f64, "incorrect `min` value");
+    // 	if h.Max() < maxVal {
+    // 		t.Error("incorrect max value")
+    // 	}
     assert_eq!(h.max(), MAX as f64, "incorrect `max` value");
+    // 	round := func(val float64) int {
+    // 		if val < 0 {
+    // 			return int(val - 0.5)
+    // 		}
+    // 		return int(val + 0.5)
+    // 	}
+    let round = |val: f64| -> i64 {
+        let r = 0.5 * val.signum();
+        (val + r) as i64
+    };
+    // 	if round(h.Mean()) != round(maxVal/2) {
+    // 		t.Errorf("incorrect mean value")
+    // 	}
+    assert_eq!(round(h.approx_mean()), round(MAX as f64 / 2.0));
 }
-// 	h := hist.New()
-// 	for i := minVal; i < maxVal; i++ {
-// 		if err := h.RecordValue(float64(i)); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 	}
-
-// 	if h.Min() > minVal {
-// 		t.Error("incorrect min value")
-// 	}
-
-// 	if h.Max() < maxVal {
-// 		t.Error("incorrect max value")
-// 	}
-
-// 	round := func(val float64) int {
-// 		if val < 0 {
-// 			return int(val - 0.5)
-// 		}
-// 		return int(val + 0.5)
-// 	}
-
-// 	if round(h.Mean()) != round(maxVal/2) {
-// 		t.Errorf("incorrect mean value")
-// 	}
-// }
 
 // func TestCopy(t *testing.T) {
 // 	h1 := hist.New()
