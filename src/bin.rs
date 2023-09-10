@@ -3,7 +3,7 @@ use core::{cmp, fmt, num, str::FromStr};
 #[must_use = "a DisplayBin does nothing unless formatted"]
 pub struct DisplayBin<'hist>(pub(crate) &'hist Bin);
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct Bin {
     pub(crate) count: u64,
     val: i8,
@@ -387,14 +387,17 @@ impl FromStr for Bin {
 
         // H[ <0.0 e+00> ]=1
         let bin = bin_str
+            .trim()
             .strip_prefix("H[")
             .ok_or(ParseBinError::Expected("bin to start with `H[`"))?
             .strip_suffix(']')
             .ok_or(ParseBinError::Expected("bin to end with `]`"))?
+            .trim()
             .parse::<f64>()
             .map_err(ParseBinError::ParseBin)?;
 
         let count = count_str
+            .trim()
             .parse::<u64>()
             .map_err(ParseBinError::ParseCount)?;
 

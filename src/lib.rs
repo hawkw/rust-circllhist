@@ -2,7 +2,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::fmt;
+use core::{fmt, str::FromStr};
 
 mod bin;
 use bin::Bin;
@@ -346,6 +346,14 @@ impl fmt::Display for Histogram {
 impl Default for Histogram {
     fn default() -> Self {
         HistogramBuilder::default().build()
+    }
+}
+
+impl FromStr for Histogram {
+    type Err = ParseError;
+    fn from_str(&self, s: &str) -> Result<Self, ParseError> {
+        let strs = s.trim().split(|c| c == ',' || c == '\n');
+        Self::from_strs(strs)
     }
 }
 
