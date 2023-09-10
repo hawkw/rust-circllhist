@@ -52,12 +52,12 @@ impl Histogram {
 
     #[must_use]
     pub fn max(&self) -> f64 {
-        todo!()
+        self.quantile(1.0).unwrap_or(f64::NAN)
     }
 
     #[must_use]
     pub fn min(&self) -> f64 {
-        todo!()
+        self.quantile(0.0).unwrap_or(f64::NAN)
     }
 
     #[must_use]
@@ -225,12 +225,57 @@ impl Histogram {
         }
     }
 
+    // func (h *Histogram) ApproxMean() float64 {
     pub fn approx_mean(&self) -> f64 {
-        todo!()
+        // if h.useLocks {
+        //     h.mutex.RLock()
+        //     defer h.mutex.RUnlock()
+        // }
+        // divisor := 0.0
+        // sum := 0.0
+        let mut divisor = 0.0;
+        // for i := uint16(0); i < h.used; i++ {
+        //     midpoint := h.bvs[i].midpoint()
+        //     cardinality := float64(h.bvs[i].count)
+        //     divisor += cardinality
+        //     sum += midpoint * cardinality
+        // }
+        let sum: f64 = self
+            .bins
+            .iter()
+            .map(|bin| {
+                let cardinality = bin.count as f64;
+                divisor += cardinality;
+                bin.midpoint() * cardinality
+            })
+            .sum();
+        // if divisor == 0.0 {
+        //     return math.NaN()
+        // }
+        if divisor == 0.0 {
+            return f64::NAN;
+        }
+        // return sum / divisor
+        sum / divisor
     }
 
+    // func (h *Histogram) ApproxSum() float64 {
     pub fn approx_sum(&self) -> f64 {
-        todo!()
+        // if h.useLocks {
+        //     h.mutex.RLock()
+        //     defer h.mutex.RUnlock()
+        // }
+        // sum := 0.0
+        // for i := uint16(0); i < h.used; i++ {
+        //     midpoint := h.bvs[i].midpoint()
+        //     cardinality := float64(h.bvs[i].count)
+        //     sum += midpoint * cardinality
+        // }
+        self.bins
+            .iter()
+            .map(|bin| bin.midpoint() * bin.count as f64)
+            .sum()
+        // return sum
     }
 
     pub fn display_bins(&self) -> impl Iterator<Item = DisplayBin<'_>> + '_ {

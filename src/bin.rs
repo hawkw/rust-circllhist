@@ -229,6 +229,29 @@ impl Bin {
         }
     }
 
+    pub(crate) fn midpoint(&self) -> f64 {
+        // if hb.isNaN() {
+        //     return math.NaN()
+        // }
+        // out := hb.value()
+        // if out == 0 {
+        //     return 0
+        // }
+        let val = self.value();
+        if val.is_nan() || val == 0.0 {
+            return val;
+        }
+
+        // interval := hb.binWidth()
+        // if out < 0 {
+        //     interval *= -1
+        // }
+        let interval = self.bin_width() * val.signum();
+
+        // return out + interval/2.0
+        val + interval / 2.0
+    }
+
     fn pow_10(&self) -> f64 {
         POWS_OF_TEN[self.exp as u8 as usize]
     }
