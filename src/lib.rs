@@ -383,16 +383,23 @@ impl HistogramBuilder {
         &self,
         strs: impl IntoIterator<Item = A>,
     ) -> Result<Histogram, ParseError> {
-        let bins = strs
-            .into_iter()
-            .enumerate()
-            .map(|(i, bin)| {
-                bin.as_ref()
+        // the input may include multiple bins of the same value, with
+        // potentially differing counts. so, rather than parsing bins and
+        // `collect`ing into a `Vec<Bin>`, we create a new `Histogram` and
+        // `insert` into it. this way, multiple bins of the same value are
+        // coalesced.
+        let mut histogram = self.build();
+        for (i, bin) in strs.into_iter().enumerate() {
+            let mut bin = bin
+                .as_ref()
                 .parse::<Bin>()
-                    .map_err(|bin| ParseError { bin, i })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(Histogram { bins })
+                .map_err(|bin| ParseError { bin, i })?;
+            // insert expects an i64 count, so take it out of the parsed bin,
+            // since we may be updating an existing bin.
+            let count = core::mem::replace(&mut bin.count, 0) as i64;
+            histogram.insert(bin, count);
+        }
+        Ok(histogram)
     }
 }
 
